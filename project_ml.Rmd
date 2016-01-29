@@ -1,0 +1,90 @@
+---
+title: "Practical Machine Learning Course Project"
+author: Shuying Shen
+date: January 30, 2016
+output: html_document
+---
+
+# Executive Summary
+The goal of this project is to predict how well a particular exercise activity is performed. Here data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants is collected and analyzed. The 6 participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 3 different models were developed and evaluated to predict the 6 classes: linear discriminant analysis, gradient boosting, and random forests. Random forests was the best performing model, with an out of sample accuracy of 0.9947.
+
+## Load libraries
+```{r}
+library(caret)
+library(rpart)
+```
+
+## Getting and Extracting Data
+The training data for this project are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+```{r}
+setwd("/Users/sshen/Courses/practical_ml/")
+trainurl = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testurl = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(trainurl, destfile="./train.csv", method = "curl")
+download.file(testurl, destfile="./test.csv", method = "curl")
+training = read.csv("./train.csv", na.strings=c("NA","#DIV/0!",""))
+testing = read.csv("./test.csv", na.strings=c("NA","#DIV/0!",""))
+```
+
+
+There are 19622 observations in the training set, and 20 observations in the testing set, both with 160 variables. The structure and descriptive statistics are examined for the training dataset.
+```{r}
+str(training)
+summary(training)
+```
+
+The first 7 variables contain user and time information, which is not part of the activity measurement features we are interested in. These variables would be excluded. It is shown that there are variables with large proportion of missing values in the training set. These variables are identified and excluded from the prediction model if more than 80% of the observations are missing.
+```{r}
+exclude = rep(0, length(training))
+for(i in 1:length(training)){
+  exclude[i] = sum(is.na(training[,i]))/dim(training)[1]
+}
+keep = !exclude>0.8
+keep[1:7] = FALSE
+new_training = training[,keep]
+new_testing = testing[,keep]
+```
+
+The new training and testing sets now have 53 variables. We check for covariates with little variability. Since the all variables are "FALSE" for near zero variance, it means no variables need to be excluded due to lack of variability.
+```{r eval=FALSE}
+nearZeroVar(new_training, saveMetrics=TRUE)
+```
+
+## Model Evaluation
+The training set is divided into a training set and evaluation set using a 70/30 split. Models are developed on this training set and then evaluated on the evaluation set.
+```{r}
+set.seed(1234)
+inTrain = createDataPartition(new_training$classe, p = 0.7)[[1]]
+train = new_training[inTrain,]
+evaluation = new_training[-inTrain,]
+```
+
+Here we fit several models: random forest, gradient boosting with trees, and linear discriminant analysis.
+```{r cache=TRUE}
+model_rf = train(classe~., method="rf", data=train)
+print(model_rf)
+model_lda = train(classe~., method="lda", data=train)
+print(model_lda)
+model_gbm = train(classe~., method="gbm", data=train, verbose=FALSE)
+print(model_gbm)
+```
+
+These three models are developed on 70% of the original training dataset, with 13737 samples, 52 predictors and "classe" as outcome. Random forest has accuracy of 0.9896 on the training set. Gradient boosting has accuracy of 0.9563 on the training set. LDA has the lowest accuracy, which is only 0.6997. The computation time is exactly reversed: LDA took the least amount of time and random forest model ran the longest.
+
+```{r}
+pred_rf = predict(model_rf, evaluation)
+confusionMatrix(pred_rf,evaluation$classe)$overall[1]
+pred_lda <- predict(model_lda, evaluation)
+confusionMatrix(pred_lda, evaluation$classe)$overall[1]
+pred_gbm <- predict(model_gbm, evaluation)
+confusionMatrix(pred_gbm, evaluation$classe)$overall[1]
+```
+## Error rate
+The models are applied to the evaluation set to get out of sample error rate. The evaluation set has 5885 observations. Random forest has the highest prediction accuracy (0.99) when applied on the evalution set. Gradient boosting follows as second best performing prediction model (accuracy = 0.9643). Linear discriminant analysis scores the lowest at 0.70 accuracy. It is worth mentioning that all three models perform slightly better on the evaluation set than the training set, indicating that the models were not overfitted. Since random forest is the best performing model, it is chosen to predict the test cases.
+
+## Prediction on testing dataset
+test_rf = predict(model_rf, new_testing)
